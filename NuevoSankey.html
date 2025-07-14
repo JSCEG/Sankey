@@ -9,31 +9,26 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --color-produccion: #ef4444;
-            /* red-500 */
-            --color-importacion: #3b82f6;
-            /* blue-500 */
-            --color-variacion: #a855f7;
-            /* purple-500 */
-            --color-primarios: #22c55e;
-            /* green-500 */
-            --color-transformacion: #f97316;
-            /* orange-500 */
-            --color-exportacion: #d97706;
-            /* amber-600 */
-            --bg-color: #f8fafc;
-            /* slate-50 */
-            --line-color: #94a3b8;
-            /* slate-400 */
-            --text-color: #334155;
-            /* slate-700 */
-            --text-light-color: #f1f5f9;
-            /* slate-100 */
+            --color-produccion: #c026d3; /* fuchsia-600 */
+            --color-importacion: #2563eb; /* blue-600 */
+            --color-variacion: #9333ea; /* purple-600 */
+            --color-primarios: #16a34a; /* green-600 */
+            --color-transformacion: #ea580c; /* orange-600 */
+            --color-exportacion: #ca8a04; /* yellow-600 */
+            
+            --bg-color: #f1f5f9; /* slate-100 */
+            --line-color: #64748b; /* slate-500 */
+            --text-color: #1e293b; /* slate-800 */
+            --text-light-color: #f8fafc; /* slate-50 */
+            --node-bg: #ffffff;
+            --shadow-color: 220 38 38;
         }
 
         body {
             font-family: 'Inter', sans-serif;
             background-color: var(--bg-color);
+            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 20px 20px;
             color: var(--text-color);
             overflow: hidden;
             margin: 0;
@@ -85,6 +80,7 @@
         }
 
         .node-main-circle {
+            position: relative; /* Needed for the hover effect */
             width: 100%;
             height: 100%;
             border-radius: 50%;
@@ -182,6 +178,14 @@
             display: block;
         }
 
+        .node-value {
+            font-size: 12px;
+            font-weight: 500;
+            color: #475569; /* slate-600 */
+            display: block;
+            margin-top: 2px;
+        }
+
         .node-count {
             font-size: 12px;
             color: #64748b;
@@ -219,9 +223,12 @@
         }
 
         .context-menu-item {
+            display: block;
             padding: 8px 16px;
             font-size: 14px;
             cursor: pointer;
+            text-decoration: none;
+            color: var(--text-color);
         }
 
         .context-menu-item:hover {
@@ -300,6 +307,38 @@
 
         .modal-child-value {
             font-weight: 500;
+        }
+
+        /* Hover Pulse Effect */
+        .node-main-circle::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-color: transparent;
+            border: 2px solid transparent;
+            transition: all 0.4s ease-out;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .node-main-circle:hover::after {
+            animation: pulse 1.5s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 0.8;
+                border-color: rgba(var(--shadow-color), 0.5);
+            }
+            100% {
+                transform: scale(1.6);
+                opacity: 0;
+                border-color: rgba(var(--shadow-color), 0);
+            }
         }
     </style>
 </head>
@@ -420,12 +459,13 @@
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
                         </div>
                         <div class="node-context-menu">
-                            <div class="context-menu-item">Ver Mapa</div>
-                            <div class="context-menu-item">Ayuda</div>
+                            <a href="mapa.html?node=${encodeURIComponent(this.name)}" target="_blank" class="context-menu-item">Ver Mapa</a>
+                            <a href="ayuda.html?node=${encodeURIComponent(this.name)}" target="_blank" class="context-menu-item">Ayuda</a>
                         </div>
                     </div>
                     <div class="node-label">
                         <span class="node-name">${this.name}</span>
+                        <span class="node-value">${this.value.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PJ</span>
                         <span class="node-count">${childCount}</span>
                     </div>
                 `;
@@ -506,7 +546,7 @@
                     item.innerHTML = `
                         <div class="modal-child-icon" style="background-color: ${child.color};"></div>
                         <span class="modal-child-name">${child.name}</span>
-                        <span class="modal-child-value">${child.value.toFixed(2)} PJ</span>
+                        <span class="modal-child-value">${child.value.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PJ</span>
                     `;
                     modalContent.appendChild(item);
                 });
@@ -526,6 +566,38 @@
                 modalTitle.textContent = title;
                 modalBackdrop.style.display = 'flex';
             }
+
+            // --- COLOR UTILITY FUNCTIONS ---
+            hexToRgb(hex) {
+                let r = 0, g = 0, b = 0;
+                if (hex.length == 4) {
+                    r = parseInt(hex[1] + hex[1], 16);
+                    g = parseInt(hex[2] + hex[2], 16);
+                    b = parseInt(hex[3] + hex[3], 16);
+                } else if (hex.length == 7) {
+                    r = parseInt(hex[1] + hex[2], 16);
+                    g = parseInt(hex[3] + hex[4], 16);
+                    b = parseInt(hex[5] + hex[6], 16);
+                }
+                return { r, g, b };
+            }
+
+            parseRgb(rgbString) {
+                const result = rgbString.match(/(\d+)/g);
+                if (result) {
+                    return { r: parseInt(result[0]), g: parseInt(result[1]), b: parseInt(result[2]) };
+                }
+                return { r: 0, g: 0, b: 0 }; // fallback
+            }
+
+            adjustColor(color, amount) {
+                const { r, g, b } = this.hexToRgb(color);
+                const newR = Math.max(0, Math.min(255, r + amount));
+                const newG = Math.max(0, Math.min(255, g + amount));
+                const newB = Math.max(0, Math.min(255, b + amount));
+                return `rgb(${newR}, ${newG}, ${newB})`;
+            }
+
 
             updatePosition() {
                 this.element.style.left = `${this.position.x}px`;
@@ -642,39 +714,52 @@
             }
 
             drawConnections() {
-                this.svg.innerHTML = '';
                 this.links.forEach(link => {
                     const fromNode = this.nodes[link.from];
                     const toNode = this.nodes[link.to];
                     const start = fromNode.getConnectorPoint(true);
                     const end = toNode.getConnectorPoint(false);
 
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    
-                    // Use a Bezier curve for a smoother, Sankey-like connection
+                    const pathId = `path-${fromNode.id}-to-${toNode.id}`;
+                    let path = document.getElementById(pathId);
+
                     const dx = Math.abs(end.x - start.x) * 0.5;
                     const pathData = `M ${start.x} ${start.y} C ${start.x + dx} ${start.y}, ${end.x - dx} ${end.y}, ${end.x} ${end.y}`;
 
-                    path.setAttribute('d', pathData);
-                    path.setAttribute('stroke', 'var(--line-color)');
-                    path.setAttribute('stroke-width', '2');
-                    path.setAttribute('fill', 'none');
-                    path.setAttribute('stroke-dasharray', '4 4');
-                    path.id = `path-${fromNode.id}-to-${toNode.id}`;
-                    this.svg.appendChild(path);
+                    if (path) {
+                        path.setAttribute('d', pathData);
+                    } else {
+                        path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                        path.id = pathId;
+                        path.setAttribute('d', pathData);
+                        path.setAttribute('stroke', 'var(--line-color)');
+                        path.setAttribute('stroke-width', '2');
+                        path.setAttribute('fill', 'none');
+                        path.setAttribute('stroke-dasharray', '4 4');
+                        this.svg.appendChild(path);
+                    }
 
-                    // Position the icon roughly in the middle of the visible connection
+                    const iconId = `icon-${fromNode.id}-to-${toNode.id}`;
+                    let toolIcon = document.getElementById(iconId);
+                    
                     const midX = (start.x + end.x) / 2;
                     const midY = (start.y + end.y) / 2;
-                    const toolIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                    toolIcon.setAttribute('x', midX);
-                    toolIcon.setAttribute('y', midY);
-                    toolIcon.setAttribute('text-anchor', 'middle');
-                    toolIcon.setAttribute('dy', '5');
-                    toolIcon.style.fontSize = '16px';
-                    toolIcon.style.fill = 'var(--line-color)';
-                    toolIcon.textContent = '🔧';
-                    this.svg.appendChild(toolIcon);
+
+                    if(toolIcon) {
+                        toolIcon.setAttribute('x', midX);
+                        toolIcon.setAttribute('y', midY);
+                    } else {
+                        toolIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                        toolIcon.id = iconId;
+                        toolIcon.setAttribute('x', midX);
+                        toolIcon.setAttribute('y', midY);
+                        toolIcon.setAttribute('text-anchor', 'middle');
+                        toolIcon.setAttribute('dy', '5');
+                        toolIcon.style.fontSize = '16px';
+                        toolIcon.style.fill = 'var(--line-color)';
+                        toolIcon.textContent = '🔧';
+                        this.svg.appendChild(toolIcon);
+                    }
                 });
             }
 
