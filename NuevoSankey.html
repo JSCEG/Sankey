@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador de Flujo de Energía</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-produccion: #ef4444;
+            /* red-500 */
+            --color-importacion: #3b82f6;
+            /* blue-500 */
+            --color-variacion: #a855f7;
+            /* purple-500 */
+            --color-primarios: #22c55e;
+            /* green-500 */
+            --color-transformacion: #f97316;
+            /* orange-500 */
+            --color-exportacion: #d97706;
+            /* amber-600 */
+            --bg-color: #f8fafc;
+            /* slate-50 */
+            --line-color: #94a3b8;
+            /* slate-400 */
+            --text-color: #334155;
+            /* slate-700 */
+            --text-light-color: #f1f5f9;
+            /* slate-100 */
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        #visualization-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #connection-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .energy-node {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 10;
+            width: 120px;
+            cursor: grab;
+        }
+
+        .energy-node.dragging {
+            cursor: grabbing;
+            z-index: 11;
+        }
+
+        .node-body {
+            position: relative;
+            width: 96px;
+            /* w-24 */
+            height: 96px;
+            /* h-24 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .node-main-circle {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s ease;
+        }
+
+        .node-main-circle:hover {
+            transform: scale(1.05);
+        }
+
+        .node-main-circle svg {
+            width: 48px;
+            height: 48px;
+            pointer-events: none;
+            /* Make sure SVG doesn't interfere with drag events */
+        }
+
+        .node-connector-handle {
+            position: absolute;
+            right: -16px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: var(--bg-color);
+            border: 2px solid var(--line-color);
+            color: var(--line-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            z-index: 12;
+        }
+
+        .node-connector-handle:hover {
+            background-color: white;
+            border-color: var(--text-color);
+            color: var(--text-color);
+        }
+
+        .node-overlay-button {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: white;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            cursor: pointer;
+            border: 3px solid var(--bg-color);
+            z-index: 12;
+            transition: transform 0.2s ease;
+        }
+
+        .node-overlay-button:hover {
+            transform: scale(1.1);
+        }
+
+        .node-overlay-button svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .node-actions-icon {
+            bottom: -4px;
+            left: -4px;
+        }
+
+        .node-info-icon {
+            top: -4px;
+            left: -4px;
+        }
+
+        .node-label {
+            margin-top: 12px;
+            text-align: center;
+            pointer-events: none;
+            /* Prevent label from interfering with drag */
+        }
+
+        .node-name {
+            font-weight: 600;
+            font-size: 14px;
+            display: block;
+        }
+
+        .node-count {
+            font-size: 12px;
+            color: #64748b;
+            /* slate-500 */
+            background-color: #e2e8f0;
+            /* slate-200 */
+            padding: 2px 6px;
+            border-radius: 9999px;
+            display: inline-block;
+            margin-top: 4px;
+        }
+
+        .particle {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        /* Context Menu */
+        .node-context-menu {
+            position: absolute;
+            bottom: 40px;
+            left: -10px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            z-index: 20;
+            padding: 8px 0;
+            min-width: 150px;
+            display: none;
+            /* Hidden by default */
+        }
+
+        .context-menu-item {
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .context-menu-item:hover {
+            background-color: #f1f5f9;
+            /* slate-100 */
+        }
+
+        /* Modal Styles */
+        #modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 99;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #modal {
+            background-color: white;
+            border-radius: 12px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+
+        #modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 16px;
+            margin-bottom: 16px;
+        }
+
+        #modal-title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        #modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #94a3b8;
+        }
+
+        #modal-content {
+            max-height: 60vh;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+
+        .modal-child-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+        }
+
+        .modal-child-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .modal-child-name {
+            flex-grow: 1;
+        }
+
+        .modal-child-value {
+            font-weight: 500;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="visualization-container">
+        <svg id="connection-canvas"></svg>
+    </div>
+
+    <div id="modal-backdrop">
+        <div id="modal">
+            <div id="modal-header">
+                <h2 id="modal-title">Detalles</h2>
+                <button id="modal-close">&times;</button>
+            </div>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // --- DATA ---
+        const jsonData = {
+            "Nodo Padre": "Producción",
+            "Nodos Hijo": [
+                { "Nodo Hijo": "Carbón mineral", "tipo": "Energía Primaria", "2024": 14.99 },
+                { "Nodo Hijo": "Petróleo crudo", "tipo": "Energía Primaria", "2024": 3469.98 },
+                { "Nodo Hijo": "Condensados", "tipo": "Energía Primaria", "2024": 604.45 },
+                { "Nodo Hijo": "Gas natural", "tipo": "Energía Primaria", "2024": 1831.44 },
+                { "Nodo Hijo": "Energía Nuclear", "tipo": "Energía Primaria", "2024": 129.51 },
+                { "Nodo Hijo": "Energia Hidraúlica", "tipo": "Energía Primaria", "2024": 86.52 },
+                { "Nodo Hijo": "Geoenergía", "tipo": "Energía Primaria", "2024": 14.78 },
+                { "Nodo Hijo": "Energía solar", "tipo": "Energía Primaria", "2024": 114.36 },
+                { "Nodo Hijo": "Energía eólica", "tipo": "Energía Primaria", "2024": 72.66 },
+                { "Nodo Hijo": "Bagazo de caña", "tipo": "Energía Primaria", "2024": 95.77 },
+                { "Nodo Hijo": "Leña", "tipo": "Energía Primaria", "2024": 129.42 },
+                { "Nodo Hijo": "Biogás", "tipo": "Energía Primaria", "2024": 3.25 }
+            ]
+        };
+
+        // --- CONFIGURATION ---
+        const YEAR = "2024";
+        const PARTICLE_COUNT = 150;
+        const PARTICLE_SPEED = 0.002;
+        const ENERGY_COLORS = {
+            'Carbón mineral': '#7f8c8d', 'Petróleo crudo': '#34495e', 'Condensados': '#95a5a6',
+            'Gas natural': '#bdc3c7', 'Energía Nuclear': '#f1c40f', 'Energia Hidraúlica': '#3498db',
+            'Geoenergía': '#e67e22', 'Energía solar': '#f39c12', 'Energía eólica': '#1abc9c',
+            'Bagazo de caña': '#2ecc71', 'Leña': '#8a3324', 'Biogás': '#16a085',
+            'default': '#ecf0f1'
+        };
+
+        // --- CLASSES & FUNCTIONS ---
+
+        class Particle {
+            constructor(path, color) {
+                this.path = path;
+                this.pathLength = path.getTotalLength();
+                this.distance = 0;
+                this.speed = (Math.random() * 0.5 + 0.5) * PARTICLE_SPEED;
+                this.element = document.createElement('div');
+                this.element.className = 'particle';
+                this.element.style.backgroundColor = color;
+                document.getElementById('visualization-container').appendChild(this.element);
+            }
+            update() {
+                this.distance += this.speed * this.pathLength;
+                if (this.distance >= this.pathLength) {
+                    this.destroy();
+                    return false;
+                }
+                const point = this.path.getPointAtLength(this.distance);
+                this.element.style.transform = `translate(${point.x - 3}px, ${point.y - 3}px)`;
+                return true;
+            }
+            destroy() {
+                this.element.parentNode?.removeChild(this.element);
+            }
+        }
+
+        class EnergyNode {
+            constructor({ id, name, value, type, position, color, icon, infoText, children = [] }) {
+                this.id = id;
+                this.name = name;
+                this.value = value;
+                this.type = type;
+                this.position = { ...position };
+                this.color = color;
+                this.icon = icon;
+                this.infoText = infoText;
+                this.children = children;
+                this.isDragging = false;
+                this.hasDragged = false;
+                this.element = this.createNodeElement();
+                document.getElementById('visualization-container').appendChild(this.element);
+                this.updatePosition();
+            }
+
+            createNodeElement() {
+                const node = document.createElement('div');
+                node.id = this.id;
+                node.className = 'energy-node';
+
+                const childCount = this.children.length || 1;
+
+                node.innerHTML = `
+                    <div class="node-body">
+                        <div class="node-main-circle" style="background-color: ${this.color};" title="Haz clic para ver detalles de componentes">
+                            ${this.icon}
+                        </div>
+                        <div class="node-connector-handle" title="Añadir paso">
+                            <span>+</span>
+                        </div>
+                        <div class="node-overlay-button node-actions-icon" title="Ver acciones">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" /></svg>
+                        </div>
+                        <div class="node-overlay-button node-info-icon" title="Más información">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                        </div>
+                        <div class="node-context-menu">
+                            <div class="context-menu-item">Ver Mapa</div>
+                            <div class="context-menu-item">Ayuda</div>
+                        </div>
+                    </div>
+                    <div class="node-label">
+                        <span class="node-name">${this.name}</span>
+                        <span class="node-count">${childCount}</span>
+                    </div>
+                `;
+
+                // Drag and Drop Logic
+                const nodeBody = node.querySelector('.node-body');
+                nodeBody.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    this.hasDragged = false;
+                    this.isDragging = true;
+                    node.classList.add('dragging');
+
+                    const initialX = this.position.x;
+                    const initialY = this.position.y;
+                    const startMouseX = e.clientX;
+                    const startMouseY = e.clientY;
+
+                    const onMouseMove = (moveEvent) => {
+                        if (!this.isDragging) return;
+                        this.hasDragged = true;
+                        const dx = moveEvent.clientX - startMouseX;
+                        const dy = moveEvent.clientY - startMouseY;
+
+                        this.position.x = initialX + dx;
+                        this.position.y = initialY + dy;
+
+                        this.updatePosition();
+                        window.dispatchEvent(new CustomEvent('nodeDragged'));
+                    };
+
+                    const onMouseUp = () => {
+                        this.isDragging = false;
+                        node.classList.remove('dragging');
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                    };
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                });
+
+
+                // Click Handlers
+                const mainCircle = node.querySelector('.node-main-circle');
+                mainCircle.addEventListener('click', () => {
+                    if (this.hasDragged) return;
+                    if (this.children.length > 0) this.showDetailsModal();
+                });
+
+                const actionsButton = node.querySelector('.node-actions-icon');
+                const contextMenu = node.querySelector('.node-context-menu');
+                actionsButton.addEventListener('click', (e) => {
+                    if (this.hasDragged) return;
+                    e.stopPropagation();
+                    document.querySelectorAll('.node-context-menu').forEach(menu => {
+                        if (menu !== contextMenu) menu.style.display = 'none';
+                    });
+                    contextMenu.style.display = contextMenu.style.display === 'block' ? 'none' : 'block';
+                });
+
+                const infoButton = node.querySelector('.node-info-icon');
+                infoButton.addEventListener('click', (e) => {
+                    if (this.hasDragged) return;
+                    e.stopPropagation();
+                    this.showInfoModal();
+                });
+
+                return node;
+            }
+
+            showDetailsModal() {
+                const modalContent = document.getElementById('modal-content');
+                modalContent.innerHTML = '';
+
+                this.children.forEach(child => {
+                    const item = document.createElement('div');
+                    item.className = 'modal-child-item';
+                    item.innerHTML = `
+                        <div class="modal-child-icon" style="background-color: ${child.color};"></div>
+                        <span class="modal-child-name">${child.name}</span>
+                        <span class="modal-child-value">${child.value.toFixed(2)} PJ</span>
+                    `;
+                    modalContent.appendChild(item);
+                });
+
+                this.openModal(`Componentes de ${this.name}`);
+            }
+
+            showInfoModal() {
+                const modalContent = document.getElementById('modal-content');
+                modalContent.innerHTML = `<p>${this.infoText}</p>`;
+                this.openModal(`Información sobre ${this.name}`);
+            }
+
+            openModal(title) {
+                const modalBackdrop = document.getElementById('modal-backdrop');
+                const modalTitle = document.getElementById('modal-title');
+                modalTitle.textContent = title;
+                modalBackdrop.style.display = 'flex';
+            }
+
+            updatePosition() {
+                this.element.style.left = `${this.position.x}px`;
+                this.element.style.top = `${this.position.y}px`;
+            }
+
+            getConnectorPoint(isStart = true) {
+                const nodeBodyWidth = 96;
+                const nodeBodyHeight = 96;
+
+                // Center of the node's main body, relative to its own top-left corner
+                const centerX = nodeBodyWidth / 2;
+                const centerY = nodeBodyHeight / 2;
+
+                // Position of the node element itself
+                const nodeX = this.position.x;
+                const nodeY = this.position.y;
+
+                // The connector handle is 36px wide and positioned at `right: -16px`.
+                // Its center is 2px inside the right edge of the main circle.
+                const handleOffset = (nodeBodyWidth / 2) - 2;
+
+                if (isStart) {
+                    // Right side connection point
+                    return {
+                        x: nodeX + centerX + handleOffset,
+                        y: nodeY + centerY
+                    };
+                } else {
+                    // Left side connection point
+                    return {
+                        x: nodeX + centerX - (nodeBodyWidth / 2),
+                        y: nodeY + centerY
+                    };
+                }
+            }
+        }
+
+        class EnergyFlow {
+            constructor() {
+                this.nodes = {};
+                this.links = [];
+                this.particles = [];
+                this.svg = document.getElementById('connection-canvas');
+                this.init();
+                window.addEventListener('resize', () => this.drawConnections());
+                window.addEventListener('nodeDragged', () => this.drawConnections());
+            }
+
+            init() {
+                this.setupGlobalListeners();
+                this.loadData();
+                this.drawConnections();
+                requestAnimationFrame(() => this.animate());
+            }
+
+            setupGlobalListeners() {
+                const modalBackdrop = document.getElementById('modal-backdrop');
+                const modalClose = document.getElementById('modal-close');
+                modalClose.addEventListener('click', () => modalBackdrop.style.display = 'none');
+                modalBackdrop.addEventListener('click', (e) => {
+                    if (e.target === modalBackdrop) modalBackdrop.style.display = 'none';
+                });
+
+                document.addEventListener('click', () => {
+                    document.querySelectorAll('.node-context-menu').forEach(menu => {
+                        menu.style.display = 'none';
+                    });
+                });
+            }
+
+            loadData() {
+                const container = document.getElementById('visualization-container');
+                const containerWidth = container.clientWidth;
+                const containerHeight = container.clientHeight;
+
+                const produccionChildren = jsonData['Nodos Hijo']
+                    .filter(n => n.tipo === 'Energía Primaria' && n[YEAR] > 0)
+                    .map(child => ({
+                        name: child['Nodo Hijo'],
+                        value: child[YEAR],
+                        color: ENERGY_COLORS[child['Nodo Hijo']] || ENERGY_COLORS.default
+                    }));
+
+                const produccionTotal = produccionChildren.reduce((sum, child) => sum + child.value, 0);
+
+                const nodeData = [
+                    {
+                        id: 'produccion', name: 'PRODUCCIÓN', value: produccionTotal, type: 'source', position: { x: 20, y: 50 }, color: 'var(--color-produccion)', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75Z" /></svg>', children: produccionChildren,
+                        infoText: 'La Producción energética se refiere a la energía extraída de reservas fósiles y biocombustibles, así como la captación de energías renovables (agua, viento, solar, etc.) que son explotadas y producidas dentro del territorio nacional. Esto también incluye la producción de "otras fuentes", como el gas residual de plantas de gas y el gas de formación utilizado por Pemex Exploración y Producción (PEP).'
+                    },
+                    {
+                        id: 'primarios', name: 'ENERGÉTICOS PRIMARIOS', value: produccionTotal + 2500 + 300, type: 'intermediate', position: { x: 50, y: 50 }, color: 'var(--color-primarios)', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" /></svg>',
+                        infoText: 'Los energéticos primarios son todas las formas de energía disponibles en la naturaleza antes de ser convertidas o transformadas. Incluyen tanto fuentes no renovables como el petróleo crudo y el gas natural, como fuentes renovables como la energía solar y eólica.'
+                    },
+                    {
+                        id: 'transformacion', name: 'TRANSFORMACIÓN', value: 6758, type: 'sink', position: { x: 80, y: 50 }, color: 'var(--color-transformacion)', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c.251-.16.52-.269.816-.323m-2.132 8.778c.373.048.75.048 1.122.048h2.25c.372 0 .749 0 1.122-.048M14.25 3.104v5.714c0 .828-.447 1.57-1.159 1.991l-2.09 1.206M14.25 3.104c-.251-.16-.52-.269-.816-.323m2.132 8.778c-.373.048-.75.048-1.122.048H11.25c-.372 0-.749 0-1.122-.048M12 21v-5.25m0 0a2.25 2.25 0 0 1-2.25-2.25v-1.5a2.25 2.25 0 0 1 2.25-2.25m0 0a2.25 2.25 0 0 0 2.25-2.25v-1.5a2.25 2.25 0 0 0-2.25-2.25m0 0h-1.5m1.5 0h1.5" /></svg>',
+                        infoText: 'El sector de transformación convierte los energéticos primarios en formas de energía secundarias y más útiles, como la gasolina, el diésel y la electricidad, que son consumidas por los usuarios finales.'
+                    },
+                ];
+
+                nodeData.forEach(data => {
+                    const pixelPosition = {
+                        x: (data.position.x / 100) * containerWidth - 60, // Center the node
+                        y: (data.position.y / 100) * containerHeight - 60,
+                    };
+                    this.nodes[data.id] = new EnergyNode({ ...data, position: pixelPosition });
+                });
+
+                this.links = [
+                    { from: 'produccion', to: 'primarios' },
+                    { from: 'primarios', to: 'transformacion' },
+                ];
+            }
+
+            drawConnections() {
+                this.svg.innerHTML = '';
+                this.links.forEach(link => {
+                    const fromNode = this.nodes[link.from];
+                    const toNode = this.nodes[link.to];
+                    const start = fromNode.getConnectorPoint(true);
+                    const end = toNode.getConnectorPoint(false);
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    
+                    // Use a Bezier curve for a smoother, Sankey-like connection
+                    const dx = Math.abs(end.x - start.x) * 0.5;
+                    const pathData = `M ${start.x} ${start.y} C ${start.x + dx} ${start.y}, ${end.x - dx} ${end.y}, ${end.x} ${end.y}`;
+
+                    path.setAttribute('d', pathData);
+                    path.setAttribute('stroke', 'var(--line-color)');
+                    path.setAttribute('stroke-width', '2');
+                    path.setAttribute('fill', 'none');
+                    path.setAttribute('stroke-dasharray', '4 4');
+                    path.id = `path-${fromNode.id}-to-${toNode.id}`;
+                    this.svg.appendChild(path);
+
+                    // Position the icon roughly in the middle of the visible connection
+                    const midX = (start.x + end.x) / 2;
+                    const midY = (start.y + end.y) / 2;
+                    const toolIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    toolIcon.setAttribute('x', midX);
+                    toolIcon.setAttribute('y', midY);
+                    toolIcon.setAttribute('text-anchor', 'middle');
+                    toolIcon.setAttribute('dy', '5');
+                    toolIcon.style.fontSize = '16px';
+                    toolIcon.style.fill = 'var(--line-color)';
+                    toolIcon.textContent = '🔧';
+                    this.svg.appendChild(toolIcon);
+                });
+            }
+
+            animate() {
+                this.particles = this.particles.filter(p => p.update());
+
+                if (this.particles.length < PARTICLE_COUNT) {
+                    this.links.forEach(link => {
+                        const fromNode = this.nodes[link.from];
+                        const path = document.getElementById(`path-${fromNode.id}-to-${link.to}`);
+                        if (!path) return;
+
+                        if (Math.random() < 0.1) {
+                            this.particles.push(new Particle(path, fromNode.color));
+                        }
+                    });
+                }
+
+                requestAnimationFrame(() => this.animate());
+            }
+        }
+
+        window.onload = () => new EnergyFlow();
+    </script>
+</body>
+
+</html>
