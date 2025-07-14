@@ -203,7 +203,7 @@
             width: 6px;
             height: 6px;
             border-radius: 50%;
-            z-index: 5;
+            z-index: 0; /* Particles now behind SVG canvas */
             pointer-events: none;
         }
 
@@ -443,14 +443,13 @@
                 node.className = 'energy-node';
 
                 const childCount = this.children.length || 1;
+                const colorVar = getComputedStyle(document.documentElement).getPropertyValue(this.color.substring(4, this.color.length - 1)).trim();
+                const rgb = colorVar.startsWith('#') ? this.hexToRgb(colorVar) : this.parseRgb(colorVar);
 
                 node.innerHTML = `
                     <div class="node-body">
-                        <div class="node-main-circle" style="background-color: ${this.color};" title="Haz clic para ver detalles de componentes">
+                        <div class="node-main-circle" style="background-image: linear-gradient(145deg, ${this.adjustColor(colorVar, 20)} 0%, ${colorVar} 100%); --shadow-color: ${rgb.r}, ${rgb.g}, ${rgb.b};" title="Haz clic para ver detalles de componentes">
                             ${this.icon}
-                        </div>
-                        <div class="node-connector-handle" title="Añadir paso">
-                            <span>+</span>
                         </div>
                         <div class="node-overlay-button node-actions-icon" title="Ver acciones">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" /></svg>
@@ -605,35 +604,48 @@
             }
 
             getConnectorPoint(isStart = true) {
-                const nodeBodyWidth = 96;
-                const nodeBodyHeight = 96;
-
-                // Center of the node's main body, relative to its own top-left corner
-                const centerX = nodeBodyWidth / 2;
-                const centerY = nodeBodyHeight / 2;
-
-                // Position of the node element itself
-                const nodeX = this.position.x;
-                const nodeY = this.position.y;
-
-                // The connector handle is 36px wide and positioned at `right: -16px`.
-                // Its center is 2px inside the right edge of the main circle.
-                const handleOffset = (nodeBodyWidth / 2) - 2;
+                const nodeCenterX = this.position.x + 60; // Center of the 120px wide container
+                const nodeCenterY = this.position.y + 48; // Center of the 96px high body
+                const radius = 48; // Radius of the 96px circle
 
                 if (isStart) {
                     // Right side connection point
                     return {
-                        x: nodeX + centerX + handleOffset,
-                        y: nodeY + centerY
+                        x: nodeCenterX + radius,
+                        y: nodeCenterY
                     };
                 } else {
                     // Left side connection point
                     return {
-                        x: nodeX + centerX - (nodeBodyWidth / 2),
-                        y: nodeY + centerY
+                        x: nodeCenterX - radius,
+                        y: nodeCenterY
                     };
                 }
             }
+        }
+
+        class SourceNode extends EnergyNode {
+            createNodeElement() {
+                const node = super.createNodeElement();
+                const nodeBody = node.querySelector('.node-body');
+                
+                const connector = document.createElement('div');
+                connector.className = 'node-connector-handle';
+                connector.title = 'Añadir paso';
+                connector.innerHTML = '<span>+</span>';
+                
+                nodeBody.appendChild(connector);
+                return node;
+            }
+        }
+
+        class IntermediateNode extends SourceNode {
+            // Inherits the output connector from SourceNode.
+            // It can also be a target, which is handled by the linking logic.
+        }
+
+        class SinkNode extends EnergyNode {
+            // No output connector handle needed. Just uses the base class element.
         }
 
         class EnergyFlow {
@@ -699,12 +711,19 @@
                     },
                 ];
 
+                const nodeClasses = {
+                    source: SourceNode,
+                    intermediate: IntermediateNode,
+                    sink: SinkNode
+                };
+
                 nodeData.forEach(data => {
                     const pixelPosition = {
                         x: (data.position.x / 100) * containerWidth - 60, // Center the node
                         y: (data.position.y / 100) * containerHeight - 60,
                     };
-                    this.nodes[data.id] = new EnergyNode({ ...data, position: pixelPosition });
+                    const NodeClass = nodeClasses[data.type] || EnergyNode; // Fallback to base class
+                    this.nodes[data.id] = new NodeClass({ ...data, position: pixelPosition });
                 });
 
                 this.links = [
@@ -739,26 +758,55 @@
                         this.svg.appendChild(path);
                     }
 
-                    const iconId = `icon-${fromNode.id}-to-${toNode.id}`;
-                    let toolIcon = document.getElementById(iconId);
+                    // --- Display flow value on the link ---
+                    const labelId = `label-${fromNode.id}-to-${toNode.id}`;
+                    const rectId = `rect-${fromNode.id}-to-${toNode.id}`;
+                    let linkLabel = document.getElementById(labelId);
+                    let labelBg = document.getElementById(rectId);
                     
                     const midX = (start.x + end.x) / 2;
                     const midY = (start.y + end.y) / 2;
+                    const valueText = `${fromNode.value.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PJ`;
 
-                    if(toolIcon) {
-                        toolIcon.setAttribute('x', midX);
-                        toolIcon.setAttribute('y', midY);
+                    if(linkLabel) {
+                        // Update existing label and background
+                        linkLabel.setAttribute('x', midX);
+                        linkLabel.setAttribute('y', midY);
+                        linkLabel.textContent = valueText;
+                        
+                        const bbox = linkLabel.getBBox();
+                        labelBg.setAttribute('x', bbox.x - 5);
+                        labelBg.setAttribute('y', bbox.y - 2);
+                        labelBg.setAttribute('width', bbox.width + 10);
+                        labelBg.setAttribute('height', bbox.height + 4);
+
                     } else {
-                        toolIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                        toolIcon.id = iconId;
-                        toolIcon.setAttribute('x', midX);
-                        toolIcon.setAttribute('y', midY);
-                        toolIcon.setAttribute('text-anchor', 'middle');
-                        toolIcon.setAttribute('dy', '5');
-                        toolIcon.style.fontSize = '16px';
-                        toolIcon.style.fill = 'var(--line-color)';
-                        toolIcon.textContent = '🔧';
-                        this.svg.appendChild(toolIcon);
+                        // Create new background and label
+                        // IMPORTANT: Add rect to SVG *before* the text to ensure it's in the background
+                        labelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                        labelBg.id = rectId;
+                        labelBg.setAttribute('fill', 'var(--bg-color)');
+                        labelBg.setAttribute('rx', '4');
+                        this.svg.appendChild(labelBg);
+
+                        linkLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                        linkLabel.id = labelId;
+                        linkLabel.setAttribute('x', midX);
+                        linkLabel.setAttribute('y', midY);
+                        linkLabel.setAttribute('text-anchor', 'middle');
+                        linkLabel.setAttribute('dy', '5');
+                        linkLabel.style.fontSize = '14px';
+                        linkLabel.style.fontWeight = '600';
+                        linkLabel.style.fill = 'var(--text-color)';
+                        linkLabel.textContent = valueText;
+                        this.svg.appendChild(linkLabel);
+                        
+                        // Now that the text is in the DOM, get its size and position the background
+                        const bbox = linkLabel.getBBox();
+                        labelBg.setAttribute('x', bbox.x - 5);
+                        labelBg.setAttribute('y', bbox.y - 2);
+                        labelBg.setAttribute('width', bbox.width + 10);
+                        labelBg.setAttribute('height', bbox.height + 4);
                     }
                 });
             }
